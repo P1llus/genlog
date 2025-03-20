@@ -1,0 +1,45 @@
+# Example configuration for genlog
+# Optional seed for reproducible generation
+seed: 12345
+
+# Define one or more templates with its expected weight
+# The weight is used to determine the probability of selecting a template
+# All built-in types from Gofakeit can be used in templates, they start with a capital letter.
+# A list of built-in types can be found here: https://github.com/brianvoe/gofakeit?tab=readme-ov-file#functions
+templates:
+  - template: '{{FormattedDate "2006-01-02T15:04:05.000Z07:00"}} [{{level}}] {{username}} - {{message}}'
+    weight: 5
+  - template: '{{FormattedDate "Jan 2 15:04:05"}} {{level}} [{{service}}] {{IPv4Address}} {{username}}: {{message}}'
+    weight: 3
+  - template: '{"timestamp":"{{FormattedDate "2006-01-02T15:04:05.000Z07:00"}}","level":"{{level}}","service":"{{service}}","message":"{{message}}","user":"{{username}}","ip":"{{ipv4}}"}'
+    weight: 2
+
+# Custom types that can be referenced in templates
+custom_types:
+  level:
+    - INFO
+    - WARNING
+    - ERROR
+    - DEBUG
+    - TRACE
+  service:
+    - API
+    - AUTH
+    - DATABASE
+    - CACHE
+    - FRONTEND
+  username:
+    - admin
+    - system
+    - app
+    - service_account
+    - anonymous
+  message:
+    - "User authenticated successfully"
+    - "Failed login attempt - invalid credentials"
+    - "Permission denied to resource"
+    - "Resource accessed successfully"
+    - "API rate limit exceeded"
+    - "Database connection timeout"
+    - "Cache invalidation completed"
+    - "Request processed in 235ms"
