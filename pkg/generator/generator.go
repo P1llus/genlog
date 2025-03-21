@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"text/template"
 	"time"
 
 	"github.com/P1llus/genlog/pkg/config"
@@ -18,7 +19,7 @@ import (
 // random value generation, and output management.
 type Generator struct {
 	config      *config.Config
-	funcMap     map[string]any
+	funcMap     template.FuncMap
 	totalWeight int
 }
 
@@ -96,7 +97,7 @@ func (g *Generator) GenerateLogs(outputFile string, count int) error {
 		}
 
 		// Write the log line to the output file
-		_, err = writer.WriteString(string(logLine) + "\n")
+		_, err = writer.WriteString(logLine + "\n")
 		if err != nil {
 			return fmt.Errorf("error writing to output file: %w", err)
 		}
@@ -137,7 +138,7 @@ func (g *Generator) selectWeightedTemplate() int {
 // Note: The addLookupFunc functionality of gofakeit is not available when rendering
 // inside go templates. This is why we have to create a map of the function names along
 // with the function used to generate the random value.
-func (g *Generator) createFuncMap(customTypes map[string][]string) map[string]any {
+func (g *Generator) createFuncMap(customTypes map[string][]string) template.FuncMap {
 	funcMap := make(map[string]any)
 
 	// Add each custom type as a function that returns a random value from its slice
@@ -186,5 +187,5 @@ func (g *Generator) GenerateLogLine() (string, error) {
 		return "", fmt.Errorf("error generating log line: %w", err)
 	}
 
-	return string(logLine), nil
+	return logLine, nil
 }
