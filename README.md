@@ -42,7 +42,7 @@ genlog --config=myconfig.yaml --output=app.log --count=1000
 
 ### As a library
 
-genlog can be used in two ways - with the simplified direct import or by using the underlying packages.
+`genlog` can be used in two ways - the easiest by using a yaml configuration file to define your task, or to generate the Config struct in code directly.
 
 #### Simplified Usage
 
@@ -144,7 +144,9 @@ func main() {
 
 ## Configuration
 
-genlog uses YAML for configuration. Here's an example:
+`genlog` uses YAML for loading the details about its task, unless specified in code like the example above. It uses the normal golang template syntax, the list of availble functions can be found [here](#template-functions)
+
+Here's an example:
 
 ```yaml
 # Optional seed for reproducible generation, uncomment to use
@@ -201,9 +203,9 @@ custom_types:
 
 ## Template Functions
 
-### Built-in Functions
+### Gofakeit Functions
 
-genlog leverages [gofakeit](https://github.com/brianvoe/gofakeit) to provide a wide range of built-in functions for generating realistic fake data. Some commonly used functions include:
+`genlog` leverages [gofakeit](https://github.com/brianvoe/gofakeit) to provide a wide range of built-in functions for generating realistic fake data. Some commonly used functions include:
 
 - **Personal Information**: `Name`, `FirstName`, `LastName`, `Email`, `Phone`, `Username`
 - **Internet**: `URL`, `DomainName`, `IPv4Address`, `IPv6Address`, `MacAddress`, `UserAgent`
@@ -214,22 +216,32 @@ genlog leverages [gofakeit](https://github.com/brianvoe/gofakeit) to provide a w
 - **Location**: `Latitude`, `Longitude`, `Country`, `City`, `State`, `StreetName`, `Zip`
 - **Error**: `Error`, `ErrorHTTP`, `ErrorDatabase`
 
-For a complete list of available functions, please refer to the [gofakeit functions documentation](https://github.com/brianvoe/gofakeit?tab=readme-ov-file#functions).
+For a complete list of available functions, please refer to the documented [gofakeit](https://github.com/brianvoe/gofakeit?tab=readme-ov-file#functions) functions.
 
-### Custom Functions
+### Custom Built-in functions:
 
-In addition to the gofakeit functions, genlog provides the following custom functions:
-
-- All custom types defined in your configuration file, they are referenced by a key and a list of possible values.
 - `FormattedDate`: Generates a random date in the specified format using golangs date formatting syntax.
 
-### Example Template Usage
-
+```yaml
+templates:
+  - template: '{{FormattedDate "Jan 2 2006 15:04:05"}} {{ServerName}}'
+    weight: 10
 ```
-{{Name}} logged in from {{IPv4Address}} at {{FormattedDate "2006-01-02T15:04:05"}}
-{{Username}} {{HTTPMethod}} {{URL}} {{HTTPStatusCode}}
-User {{UUID}} accessed resource from {{City}}, {{Country}}
-[{{LogLevel "short"}}] Connection from {{IPv4Address}} failed: {{ErrorDatabase}}
+
+### Defining Custom Types
+
+In your config.yaml it is possible to specify custom types that can be used in your templates. This is done by defining a key-value pair where the key is the type name and the value is a list of possible values. These will then be available directly in the template definition as a function.
+
+```yaml
+custom_types:
+  ServerName:
+	- localhost
+	- firewall-01
+	- fw-edge-01
+
+  AccessListName:
+	- incoming
+	- guest_access
 ```
 
 ## License

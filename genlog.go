@@ -1,4 +1,4 @@
-// Package loggen provides a simple API for generating fake log data
+// Package genlog provides a simple API for generating fake log data
 // based on customizable templates and patterns.
 //
 // It can be used either as a library in your Go code or as a CLI tool.
