@@ -21,6 +21,7 @@ builds:
       - -trimpath
     ldflags:
       - "-s -w -X main.version={{.Version}} -X main.commit={{.Commit}}"
+    main: ./cmd/genlog/main.go
 
 archives:
   - formats: ["binary"]
