@@ -24,7 +24,7 @@ builds:
     main: ./cmd/genlog/main.go
 
 archives:
-  - format: binary
+  - formats: ["binary"]
     name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:

@@ -5,21 +5,32 @@ A flexible and powerful fake log generator for testing and development purposes.
 [![Go Reference](https://pkg.go.dev/badge/github.com/P1llus/genlog.svg)](https://pkg.go.dev/github.com/P1llus/genlog)
 [![Go Report Card](https://goreportcard.com/badge/github.com/P1llus/genlog)](https://goreportcard.com/report/github.com/P1llus/genlog)
 
+Generate realistic log data with customizable templates for testing log processing, visualization tools, and SIEM systems.
+
 ## Features
 
-- Template-based log generation with customizable patterns and outputs
-- Weighted template distribution for realistic log patterns
-- Support for custom data types and values
-- Deterministic generation with optional seeds for reproducible results
-- Easy-to-use command-line interface
-- Also available as a Go package for integration into existing projects
+- 📝 Template-based log generation with customizable patterns and outputs
+- 📊 Weighted template distribution for realistic log patterns
+- 🧩 Support for custom data types and values
+- 🔄 Deterministic generation with optional seeds for reproducible results
+- 💻 Easy-to-use command-line interface
+- 📦 Available as a Go package for integration into existing projects
 
 ## Installation
 
 ### As a command-line tool
 
+Directly with go install:
+
 ```bash
 go install github.com/P1llus/genlog/cmd/genlog@latest
+```
+
+Or download the latest release for your platform from the [releases page](https://github.com/P1llus/genlog/releases).
+
+```bash
+curl -L "https://github.com/P1llus/genlog/releases/latest/download/genlog_linux_amd64" -o genlog
+chmod +x genlog
 ```
 
 ### As a library
@@ -28,12 +39,13 @@ go install github.com/P1llus/genlog/cmd/genlog@latest
 go get github.com/P1llus/genlog
 ```
 
-## Usage
+## Quick Start
 
 ### Command-line
 
 ```bash
 # Generate 100 log lines using the default configuration (expects config.yaml in the current directory)
+# Example config can be found further down in the README
 genlog --count=100
 
 # Specify a custom configuration file and output location
@@ -42,9 +54,9 @@ genlog --config=myconfig.yaml --output=app.log --count=1000
 
 ### As a library
 
-`genlog` can be used in two ways - the easiest by using a yaml configuration file to define your task, or to generate the Config struct in code directly.
+`genlog` can be used in two ways - with a YAML configuration file or with a programmatically created configuration.
 
-#### Simplified Usage
+#### Basic Usage
 
 ```go
 package main
@@ -57,7 +69,7 @@ import (
 )
 
 func main() {
-	// Create a generator directly from a config file (simplest approach)
+	// Create a generator from a config file
 	gen, err := genlog.NewFromFile("config.yaml")
 	if err != nil {
 		log.Fatalf("Failed to create generator: %v", err)
@@ -79,10 +91,9 @@ func main() {
 }
 ```
 
-#### Advanced Usage
+#### Programmatic Configuration
 
 ```go
-// Package main demonstrates usage with manually created configuration.
 package main
 
 import (
@@ -129,27 +140,21 @@ func main() {
 		log.Fatalf("Failed to generate logs: %v", err)
 	}
 
-	// Generate and print a few sample log lines
-	fmt.Println("Sample generated log lines:")
-	for i := 0; i < 3; i++ {
-		logLine, err := gen.GenerateLogLine()
-		if err != nil {
-			log.Fatalf("Failed to generate log line: %v", err)
-		}
-		fmt.Printf("%d: %s\n", i+1, logLine)
+	// Generate a sample log line
+	logLine, err := gen.GenerateLogLine()
+	if err != nil {
+		log.Fatalf("Failed to generate log line: %v", err)
 	}
+	fmt.Printf("Sample log: %s\n", logLine)
 }
-
 ```
 
-## Configuration
+## Configuration File
 
-`genlog` uses YAML for loading the details about its task, unless specified in code like the example above. It uses the normal golang template syntax, the list of availble functions can be found [here](#template-functions)
-
-Here's an example:
+`genlog` uses YAML for configuration. Here's an example:
 
 ```yaml
-# Optional seed for reproducible generation, uncomment to use
+# Optional seed for reproducible generation
 # seed: 12345
 
 # Log templates with weights
@@ -165,84 +170,63 @@ custom_types:
     - localhost
     - firewall-01
     - fw-edge-01
-
   AccessListName:
     - incoming
     - guest_access
-
-  Protocol:
-    - tcp
-    - udp
-    - http
-
-  Zone:
-    - inside
-    - outside
-    - dmz
-    - public
-
-  DomainUsername:
-    - "LOCAL\\username"
-    - "DOMAIN\\admin"
-    - "CORP\\user"
-    - "LOCAL\\sysadmin"
-
-  VpnGroup:
-    - VPN_USERS
-    - ADMIN_VPN
-
-  Username:
-    - example.user
-    - admin.user
-    - guest.access
-
-  HexCode:
-    - "0x93d0e533"
-    - "0xbc56e123"
 ```
 
-## Template Functions
+## Template Syntax
 
-### Gofakeit Functions
+Templates use placeholders in double curly braces `{{ }}` to insert randomly generated values. The available placeholders include:
 
-`genlog` leverages [gofakeit](https://github.com/brianvoe/gofakeit) to provide a wide range of built-in functions for generating realistic fake data. Some commonly used functions include:
+### Built-in Fake Data Functions
 
-- **Personal Information**: `Name`, `FirstName`, `LastName`, `Email`, `Phone`, `Username`
-- **Internet**: `URL`, `DomainName`, `IPv4Address`, `IPv6Address`, `MacAddress`, `UserAgent`
-- **Log Related**: `LogLevel`, `HTTPMethod`, `HTTPStatusCode`, `HTTPVersion`
-- **Text**: `Word`, `Sentence`, `Paragraph`, `Quote`, `UUID`
-- **Numbers**: `Number`, `Int32`, `Int64`, `Float32`, `Float64`, `Digit`
-- **Date/Time**: `Date`, `NanoSecond`, `Second`, `Minute`, `Hour`, `Month`, `WeekDay`, `Year`, `TimeZone`
-- **Location**: `Latitude`, `Longitude`, `Country`, `City`, `State`, `StreetName`, `Zip`
-- **Error**: `Error`, `ErrorHTTP`, `ErrorDatabase`
+`genlog` leverages [gofakeit](https://github.com/brianvoe/gofakeit) to provide a wide range of functions:
 
-For a complete list of available functions, please refer to the documented [gofakeit](https://github.com/brianvoe/gofakeit?tab=readme-ov-file#functions) functions.
+#### Common Categories:
 
-### Custom Built-in functions:
+- **Personal**: `{{Name}}`, `{{FirstName}}`, `{{LastName}}`, `{{Email}}`, `{{Phone}}`
+- **Internet**: `{{URL}}`, `{{DomainName}}`, `{{IPv4Address}}`, `{{UserAgent}}`
+- **Log Specific**: `{{LogLevel}}`, `{{HTTPMethod}}`, `{{HTTPStatusCode}}`
+- **Numbers**: `{{Number 1 100}}`, `{{Int32}}`, `{{Float32}}`
+- **Date/Time**: `{{Second}}`, `{{Minute}}`, `{{Hour}}`, `{{Month}}`
 
-- `FormattedDate`: Generates a random date in the specified format using golangs date formatting syntax.
+#### Example Template:
 
 ```yaml
 templates:
-  - template: '{{FormattedDate "Jan 2 2006 15:04:05"}} {{ServerName}}'
-    weight: 10
+	template: '{{FormattedDate "2006-01-02"}} {{LogLevel}} - User {{Username}} connected from {{IPv4Address}} using {{UserAgent}}'
+	weight: 10
 ```
 
-### Defining Custom Types
+### Custom Types
 
-In your config.yaml it is possible to specify custom types that can be used in your templates. This is done by defining a key-value pair where the key is the type name and the value is a list of possible values. These will then be available directly in the template definition as a function.
+Custom types defined in your config file can be used directly in templates:
 
 ```yaml
-custom_types:
-  ServerName:
-	- localhost
-	- firewall-01
-	- fw-edge-01
-
-  AccessListName:
-	- incoming
-	- guest_access
+templates:
+	template: '{{FormattedDate "Jan 2 2006 15:04:05"}} {{ServerName}} {{AccessListName}} request from {{IPv4Address}}'
+	weight: 10
 ```
+
+### Custom Built-in Functions:
+
+- `{{FormattedDate "format"}}`: Generates a random date in the specified format using Go's date formatting syntax.
+
+## Advanced Examples
+
+Check the `examples/` directory for more advanced usage patterns:
+
+- `examples/basic/`: Simple configuration with basic templates
+- `examples/config/`: Programmatic configuration example
+
+## Documentation
+
+For complete documentation, visit the [Go package documentation](https://pkg.go.dev/github.com/P1llus/genlog).
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 

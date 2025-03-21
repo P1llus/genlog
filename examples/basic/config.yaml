@@ -1,11 +1,7 @@
 # Example configuration for genlog
-# Optional seed for reproducible generation
+# All configuration configuration can be viewed in the README.md
 seed: 12345
 
-# Define one or more templates with its expected weight
-# The weight is used to determine the probability of selecting a template
-# All built-in types from Gofakeit can be used in templates, they start with a capital letter.
-# A list of built-in types can be found here: https://github.com/brianvoe/gofakeit?tab=readme-ov-file#functions
 templates:
   - template: '{{FormattedDate "2006-01-02T15:04:05.000Z07:00"}} [{{level}}] {{username}} - {{message}}'
     weight: 5

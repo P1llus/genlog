@@ -1,4 +1,6 @@
 // Package generator provides log generation functionality for the genlog tool.
+// It contains the core logic for creating fake log entries based on templates
+// and random data generation.
 package generator
 
 import (
@@ -12,7 +14,8 @@ import (
 )
 
 // Generator is responsible for generating fake log entries
-// based on the provided configuration.
+// based on the provided configuration. It handles template selection,
+// random value generation, and output management.
 type Generator struct {
 	config      *config.Config
 	funcMap     map[string]any
@@ -20,7 +23,11 @@ type Generator struct {
 }
 
 // NewGenerator creates a new log generator with the given configuration.
-// It initializes the function map and calculates the total template weight.
+// It initializes the function map for template rendering and calculates
+// the total template weight for weighted random selection.
+//
+// The function map includes all custom types from the configuration,
+// making them available as placeholders in templates.
 func NewGenerator(cfg *config.Config) *Generator {
 	// Set the seed for randomization if provided
 	if cfg.Seed != 0 {
@@ -47,8 +54,14 @@ func NewGenerator(cfg *config.Config) *Generator {
 
 // GenerateLogs generates the specified number of log lines and writes them to the output file.
 // It returns an error if file operations fail or if log generation encounters problems.
+//
+// The function:
+// 1. Creates or overwrites the output file
+// 2. For each log line, selects a random template based on weights
+// 3. Populates the template with random values
+// 4. Writes the log line to the output file
+// 5. Reports progress periodically
 func (g *Generator) GenerateLogs(outputFile string, count int) error {
-	// Delete file if it already exists
 	if _, err := os.Stat(outputFile); err == nil {
 		err = os.Remove(outputFile)
 		if err != nil {
@@ -57,7 +70,6 @@ func (g *Generator) GenerateLogs(outputFile string, count int) error {
 		fmt.Printf("Deleted existing output file: %s\n", outputFile)
 	}
 
-	// Create output file
 	f, err := os.Create(outputFile)
 	if err != nil {
 		return fmt.Errorf("error creating output file: %w", err)
@@ -100,6 +112,7 @@ func (g *Generator) GenerateLogs(outputFile string, count int) error {
 }
 
 // selectWeightedTemplate selects a random template index based on the weights.
+// Templates with higher weights have a proportionally higher chance of being selected.
 func (g *Generator) selectWeightedTemplate() int {
 	if g.totalWeight <= 0 || len(g.config.Templates) == 0 {
 		return 0
@@ -117,8 +130,13 @@ func (g *Generator) selectWeightedTemplate() int {
 }
 
 // createFuncMap creates a map of functions that can be used in templates.
-// The addLookupFunc functionality of gofakeit is not available when rendering inside go templates.
-// This is why we have to create a map of the function names along with the function used to generate the random value.
+// The map includes:
+// 1. All custom types from the configuration, each as a function returning a random value
+// 2. Built-in helper functions like FormattedDate
+//
+// Note: The addLookupFunc functionality of gofakeit is not available when rendering
+// inside go templates. This is why we have to create a map of the function names along
+// with the function used to generate the random value.
 func (g *Generator) createFuncMap(customTypes map[string][]string) map[string]any {
 	funcMap := make(map[string]any)
 
@@ -143,6 +161,7 @@ func (g *Generator) createFuncMap(customTypes map[string][]string) map[string]an
 }
 
 // createRandomValueFunc creates a function that returns a random value from the given slice.
+// This is used to translate configured custom types to a funcMap for the template functions.
 func (g *Generator) createRandomValueFunc(values []string) func() string {
 	return func() string {
 		if len(values) == 0 {
@@ -154,7 +173,8 @@ func (g *Generator) createRandomValueFunc(values []string) func() string {
 }
 
 // GenerateLogLine generates a single log line using a randomly selected template.
-// This is useful for generating log lines programmatically without writing to a file.
+// This is useful for generating log lines programmatically without writing to a file,
+// such as when streaming logs directly to another system.
 func (g *Generator) GenerateLogLine() (string, error) {
 	templateIdx := g.selectWeightedTemplate()
 	selectedTemplate := g.config.Templates[templateIdx].Template
