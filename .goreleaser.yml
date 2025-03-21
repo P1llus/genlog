@@ -24,8 +24,8 @@ builds:
     main: ./cmd/genlog/main.go
 
 archives:
-  - formats: ["binary"]
-    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
+  - format: binary
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
@@ -41,11 +41,11 @@ changelog:
     - title: Added
       regexp: "^.*feat[(\\w)]*:+.*$"
       order: 0
-    - title: Fixed
-      regexp: "^.*fix\\((?!deps\\))[(\\w)]*:+.*$"
-      order: 1
     - title: Dependency Updates
-      regexp: "^.*\\(deps\\)*:+.*$"
+      regexp: "^.*fix\\(deps\\):+.*$"
       order: 2
+    - title: Fixed
+      regexp: "^.*fix:+.*$|^.*fix\\(.*\\):+.*$"
+      order: 1
     - title: Other
       order: 999
