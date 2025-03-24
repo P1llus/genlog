@@ -13,18 +13,16 @@ import (
 func main() {
 	// Create a generator directly from a config file (simplest approach)
 	// The config file contains templates and custom types for log generation
-	gen, err := genlog.NewFromFile("examples/basic/config.yaml")
+	gen, err := genlog.NewFromFile("examples/basic/config.yaml", 10) // Generate 10 logs
 	if err != nil {
 		log.Fatalf("Failed to create generator: %v", err)
 	}
 
-	// Generate 10 log lines and write them to a file
-	// This is useful for batch generation of test data
-	fmt.Println("Generating logs to output.log...")
-	err = gen.GenerateLogs("output.log", 10)
-	if err != nil {
-		log.Fatalf("Failed to generate logs: %v", err)
-	}
+	// Start generating logs
+	gen.Start()
+
+	// Wait for completion
+	<-gen.Done()
 
 	// Generate and print individual log lines
 	// This demonstrates generating logs on-demand without writing to a file
@@ -38,6 +36,6 @@ func main() {
 		fmt.Printf("%d: %s\n", i+1, logLine)
 	}
 
-	fmt.Println("\nTip: Check output.log to see all generated log lines.")
+	fmt.Println("\nTip: Check the output files specified in your config.yaml to see all generated log lines.")
 	fmt.Println("Each run will produce different random values unless a seed is specified.")
 }

@@ -15,6 +15,8 @@ Generate realistic log data with customizable templates for testing log processi
 - 🔄 Deterministic generation with optional seeds for reproducible results
 - 💻 Easy-to-use command-line interface
 - 📦 Available as a Go package for integration into existing projects
+- 🔄 Parallel log generation with configurable worker count
+- 🛑 Graceful shutdown support for both count-based and infinite generation modes
 
 ## Installation
 
@@ -46,10 +48,13 @@ go get github.com/P1llus/genlog
 ```bash
 # Generate 100 log lines using the default configuration (expects config.yaml in the current directory)
 # Example config can be found further down in the README
-genlog --count=100
+genlog --count=100 --workers=4
 
 # Specify a custom configuration file and output location
-genlog --config=myconfig.yaml --output=app.log --count=1000
+genlog --config=myconfig.yaml --output=app.log --count=1000 --workers=8
+
+# Generate logs indefinitely until interrupted (Ctrl+C)
+genlog --config=myconfig.yaml --output=app.log --workers=4
 ```
 
 ### As a library
@@ -70,7 +75,7 @@ import (
 
 func main() {
 	// Create a generator from a config file
-	gen, err := genlog.NewFromFile("config.yaml")
+	gen, err := genlog.NewFromFile("config.yaml", 4) // 4 workers
 	if err != nil {
 		log.Fatalf("Failed to create generator: %v", err)
 	}
@@ -80,6 +85,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to generate logs: %v", err)
 	}
+
+	// Wait for completion
+	<-gen.Done()
 
 	// Generate and print individual log lines
 	fmt.Println("Generated individual log line:")
@@ -132,13 +140,16 @@ func main() {
 	}
 
 	// Create a generator from the config
-	gen := genlog.NewFromConfig(cfg)
+	gen := genlog.NewFromConfig(cfg, 4) // 4 workers
 
 	// Generate logs to a file
 	err := gen.GenerateLogs("advanced-output.log", 20)
 	if err != nil {
 		log.Fatalf("Failed to generate logs: %v", err)
 	}
+
+	// Wait for completion
+	<-gen.Done()
 
 	// Generate a sample log line
 	logLine, err := gen.GenerateLogLine()

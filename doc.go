@@ -10,7 +10,7 @@ The simplest way to use genlog is through a configuration file:
 	import "github.com/P1llus/genlog"
 
 	// Create a log generator from a config file
-	gen, err := genlog.NewFromFile("config.yaml")
+	gen, err := genlog.NewFromFile("config.yaml", 4) // 4 workers
 	if err != nil {
 		// handle error
 	}
@@ -21,6 +21,9 @@ The simplest way to use genlog is through a configuration file:
 		// handle error
 	}
 
+	// Wait for completion
+	<-gen.Done()
+
 # Programmatic Configuration
 
 You can also create configurations programmatically:
@@ -28,7 +31,7 @@ You can also create configurations programmatically:
 	cfg := &genlog.Config{
 		Templates: []genlog.LogTemplate{
 			{
-				Template: "{{FormattedDate \"2006-01-02T15:04:05.000Z07:00\"}} [INFO] User {{username}} logged in from {{IPV4Address}}",
+				Template: "{{FormattedDate \"2006-01-02T15:04:05.000Z07:00\"}} [INFO] User {{username}} logged in from {{IPv4Address}}",
 				Weight:   1,
 			},
 		},
@@ -37,7 +40,7 @@ You can also create configurations programmatically:
 		},
 	}
 
-	gen := genlog.NewFromConfig(cfg)
+	gen := genlog.NewFromConfig(cfg, 4) // 4 workers
 	logLine, err := gen.GenerateLogLine()
 
 # Template Syntax
@@ -46,7 +49,7 @@ Templates use the golang template syntax with surrounded by double braces.
 You can use functions available from gofakeit, custom types defined in configurations, and built-in custom functions:
 More examples can be found on the GitHub repository.
 
-- Basic placeholders: {{FirstName}}, {{URL}}, {{IPV4Address}}
+- Basic placeholders: {{FirstName}}, {{URL}}, {{IPv4Address}}
 - Custom types: {{username}} (defined in your config)
 - Built-in custom functions: {{FormattedDate "2006-01-02 15:04:05"}}
 
@@ -54,8 +57,9 @@ More examples can be found on the GitHub repository.
 
 Genlog can also be used as a command line tool, and can be installed either with go-get or by downloading a pre-built binary from the releases page:
 
-	genlog -config=myconfig.yaml -output=logs.txt -count=1000
+	genlog -config=myconfig.yaml -output=logs.txt -count=1000 -workers=4
 
+The tool supports both count-based and infinite generation modes, with proper handling of graceful shutdown.
 See the GitHub repository for more information and examples:
 https://github.com/P1llus/genlog
 */

@@ -49,25 +49,47 @@ func main() {
 		// Optional: set seed for reproducible results
 		// Using the same seed will generate the same sequence of logs
 		Seed: 12345,
+		// Configure outputs
+		Outputs: []genlog.OutputConfig{
+			{
+				Type:    genlog.OutputTypeFile,
+				Workers: 2,
+				Config: map[string]interface{}{
+					"filename": "advanced-output.log",
+				},
+			},
+			{
+				Type:    genlog.OutputTypeFile,
+				Workers: 1,
+				Config: map[string]interface{}{
+					"filename": "json-output.log",
+				},
+			},
+		},
 	}
 
 	// Create a generator from the config
-	gen := genlog.NewFromConfig(cfg)
-
-	// Output file for the generated logs
-	outputFile := "advanced-output.log"
-
-	// Delete previous output file if it exists
-	if _, err := os.Stat(outputFile); err == nil {
-		os.Remove(outputFile)
-	}
-
-	// Generate logs to a file
-	fmt.Printf("Generating 20 log lines to %s...\n", outputFile)
-	err := gen.GenerateLogs(outputFile, 20)
+	gen, err := genlog.NewFromConfig(cfg, 20) // Generate 20 logs
 	if err != nil {
-		log.Fatalf("Failed to generate logs: %v", err)
+		log.Fatalf("Failed to create generator: %v", err)
 	}
+
+	// Delete previous output files if they exist
+	for _, output := range cfg.Outputs {
+		if output.Type == genlog.OutputTypeFile {
+			if filename, ok := output.Config["filename"].(string); ok {
+				if _, err := os.Stat(filename); err == nil {
+					os.Remove(filename)
+				}
+			}
+		}
+	}
+
+	// Start generating logs
+	gen.Start()
+
+	// Wait for completion
+	<-gen.Done()
 
 	// Generate and print a few sample log lines
 	fmt.Println("\nSample generated log lines:")
@@ -81,5 +103,5 @@ func main() {
 
 	fmt.Println("\nNote: Because we set a seed value (12345), these logs will be")
 	fmt.Println("the same every time this example is run. Remove the seed for random logs.")
-	fmt.Printf("\nCheck %s to see all generated log lines.\n", outputFile)
+	fmt.Println("\nCheck advanced-output.log and json-output.log to see all generated log lines.")
 }

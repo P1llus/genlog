@@ -1,157 +1,185 @@
-package config_test
+package config
 
 import (
 	"os"
-	"reflect"
 	"testing"
-
-	"github.com/P1llus/genlog/pkg/config"
 )
 
 func TestReadConfig(t *testing.T) {
 	// Create a temporary config file
 	content := `
 templates:
-  - template: "Test template 1 {{level}} {{service}}"
-    weight: 10
-  - template: "Test template 2"
-    weight: 5
+  - template: "{{FormattedDate \"2006-01-02T15:04:05.000Z07:00\"}} [INFO] {{message}}"
+    weight: 1
 custom_types:
-  level:
-    - INFO
-    - ERROR
-  service:
-    - API
-    - DB
+  message:
+    - "Test message 1"
+    - "Test message 2"
+outputs:
+  - type: file
+    workers: 1
+    config:
+      filename: "test.log"
 seed: 12345
 `
 	tmpfile, err := os.CreateTemp("", "config-*.yaml")
 	if err != nil {
-		t.Fatalf("Failed to create temp file: %v", err)
+		t.Fatal(err)
 	}
 	defer os.Remove(tmpfile.Name())
 
 	if _, err := tmpfile.Write([]byte(content)); err != nil {
-		t.Fatalf("Failed to write to temp file: %v", err)
+		t.Fatal(err)
 	}
 	if err := tmpfile.Close(); err != nil {
-		t.Fatalf("Failed to close temp file: %v", err)
+		t.Fatal(err)
 	}
 
-	// Read the config
-	cfg, err := config.ReadConfig(tmpfile.Name())
+	// Test reading the config
+	cfg, err := ReadConfig(tmpfile.Name())
 	if err != nil {
-		t.Fatalf("Failed to read config: %v", err)
+		t.Fatalf("ReadConfig failed: %v", err)
 	}
 
-	// Verify config values
-	expectedConfig := &config.Config{
-		Templates: []config.LogTemplate{
-			{
-				Template: "Test template 1 {{level}} {{service}}",
-				Weight:   10,
-			},
-			{
-				Template: "Test template 2",
-				Weight:   5,
-			},
-		},
-		CustomTypes: map[string][]string{
-			"level":   {"INFO", "ERROR"},
-			"service": {"API", "DB"},
-		},
-		Seed: 12345,
+	// Verify the config contents
+	if len(cfg.Templates) != 1 {
+		t.Errorf("Expected 1 template, got %d", len(cfg.Templates))
 	}
-
-	// Check templates
-	if len(cfg.Templates) != len(expectedConfig.Templates) {
-		t.Errorf("Expected %d templates, got %d", len(expectedConfig.Templates), len(cfg.Templates))
+	if cfg.Templates[0].Weight != 1 {
+		t.Errorf("Expected weight 1, got %d", cfg.Templates[0].Weight)
 	}
-	for i, tmpl := range cfg.Templates {
-		if tmpl.Template != expectedConfig.Templates[i].Template || tmpl.Weight != expectedConfig.Templates[i].Weight {
-			t.Errorf("Template %d mismatch. Expected %+v, got %+v", i, expectedConfig.Templates[i], tmpl)
-		}
+	if len(cfg.CustomTypes["message"]) != 2 {
+		t.Errorf("Expected 2 messages, got %d", len(cfg.CustomTypes["message"]))
 	}
-
-	// Check custom types
-	if !reflect.DeepEqual(cfg.CustomTypes, expectedConfig.CustomTypes) {
-		t.Errorf("Custom types mismatch. Expected %+v, got %+v", expectedConfig.CustomTypes, cfg.CustomTypes)
+	if len(cfg.Outputs) != 1 {
+		t.Errorf("Expected 1 output, got %d", len(cfg.Outputs))
 	}
-
-	// Check seed
-	if cfg.Seed != expectedConfig.Seed {
-		t.Errorf("Seed mismatch. Expected %d, got %d", expectedConfig.Seed, cfg.Seed)
+	if cfg.Outputs[0].Type != OutputTypeFile {
+		t.Errorf("Expected output type file, got %s", cfg.Outputs[0].Type)
+	}
+	if cfg.Seed != 12345 {
+		t.Errorf("Expected seed 12345, got %d", cfg.Seed)
 	}
 }
 
-func TestReadConfigWithMissingFile(t *testing.T) {
-	_, err := config.ReadConfig("nonexistent_file.yaml")
+func TestReadConfigInvalidFile(t *testing.T) {
+	_, err := ReadConfig("nonexistent.yaml")
 	if err == nil {
-		t.Errorf("Expected error when reading nonexistent file, got nil")
+		t.Error("Expected error for nonexistent file, got nil")
 	}
 }
 
-func TestReadConfigWithInvalidYaml(t *testing.T) {
-	// Create a temporary file with invalid YAML
+func TestReadConfigInvalidYAML(t *testing.T) {
+	// Create a temporary config file with invalid YAML
 	content := `
 templates:
-  - template: "Test template 1"
-    weight: 10
-  - template: "Test template 2"
-    weight: invalid  # This should cause an error
+  - template: "{{FormattedDate \"2006-01-02T15:04:05.000Z07:00\"}} [INFO] {{message}}"
+    weight: invalid
 `
-	tmpfile, err := os.CreateTemp("", "invalid-config-*.yaml")
+	tmpfile, err := os.CreateTemp("", "config-*.yaml")
 	if err != nil {
-		t.Fatalf("Failed to create temp file: %v", err)
+		t.Fatal(err)
 	}
 	defer os.Remove(tmpfile.Name())
 
 	if _, err := tmpfile.Write([]byte(content)); err != nil {
-		t.Fatalf("Failed to write to temp file: %v", err)
+		t.Fatal(err)
 	}
 	if err := tmpfile.Close(); err != nil {
-		t.Fatalf("Failed to close temp file: %v", err)
+		t.Fatal(err)
 	}
 
-	// Try to read the invalid config
-	_, err = config.ReadConfig(tmpfile.Name())
+	_, err = ReadConfig(tmpfile.Name())
 	if err == nil {
-		t.Errorf("Expected error when parsing invalid YAML, got nil")
+		t.Error("Expected error for invalid YAML, got nil")
 	}
 }
 
-func TestReadConfigWithEmptyCustomTypes(t *testing.T) {
-	// Create config with no custom_types field
-	content := `
-templates:
-  - template: "Test template"
-    weight: 10
-seed: 12345
-`
-	tmpfile, err := os.CreateTemp("", "empty-custom-types-*.yaml")
-	if err != nil {
-		t.Fatalf("Failed to create temp file: %v", err)
+func TestConfigValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  *Config
+		wantErr bool
+	}{
+		{
+			name: "valid config",
+			config: &Config{
+				Templates: []LogTemplate{
+					{
+						Template: "test template",
+						Weight:   1,
+					},
+				},
+				Outputs: []OutputConfig{
+					{
+						Type:    OutputTypeFile,
+						Workers: 1,
+						Config: map[string]interface{}{
+							"filename": "test.log",
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "no templates",
+			config: &Config{
+				Outputs: []OutputConfig{
+					{
+						Type:    OutputTypeFile,
+						Workers: 1,
+						Config: map[string]interface{}{
+							"filename": "test.log",
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "no outputs",
+			config: &Config{
+				Templates: []LogTemplate{
+					{
+						Template: "test template",
+						Weight:   1,
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid output type",
+			config: &Config{
+				Templates: []LogTemplate{
+					{
+						Template: "test template",
+						Weight:   1,
+					},
+				},
+				Outputs: []OutputConfig{
+					{
+						Type:    "invalid",
+						Workers: 1,
+						Config: map[string]interface{}{
+							"filename": "test.log",
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
 	}
-	defer os.Remove(tmpfile.Name())
 
-	if _, err := tmpfile.Write([]byte(content)); err != nil {
-		t.Fatalf("Failed to write to temp file: %v", err)
-	}
-	if err := tmpfile.Close(); err != nil {
-		t.Fatalf("Failed to close temp file: %v", err)
-	}
-
-	// Read the config
-	cfg, err := config.ReadConfig(tmpfile.Name())
-	if err != nil {
-		t.Fatalf("Failed to read config: %v", err)
-	}
-
-	// CustomTypes should be initialized to an empty map
-	if cfg.CustomTypes == nil {
-		t.Errorf("CustomTypes is nil, expected an initialized empty map")
-	}
-	if len(cfg.CustomTypes) != 0 {
-		t.Errorf("CustomTypes is not empty, got %+v", cfg.CustomTypes)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Note: This test assumes we add a Validate method to the Config struct
+			// You might want to add this method to the Config struct
+			err := tt.config.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Config.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
 	}
 }

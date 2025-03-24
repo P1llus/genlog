@@ -4,13 +4,13 @@
 package generator
 
 import (
-	"bufio"
 	"fmt"
-	"os"
+	"sync"
 	"text/template"
 	"time"
 
 	"github.com/P1llus/genlog/pkg/config"
+	"github.com/P1llus/genlog/pkg/output"
 	"github.com/brianvoe/gofakeit/v7"
 )
 
@@ -21,6 +21,11 @@ type Generator struct {
 	config      *config.Config
 	funcMap     template.FuncMap
 	totalWeight int
+	workers     []*output.Worker
+	stopChan    chan struct{}
+	wg          sync.WaitGroup
+	maxCount    int
+	doneChan    chan struct{} // Channel to signal completion
 }
 
 // NewGenerator creates a new log generator with the given configuration.
@@ -29,7 +34,7 @@ type Generator struct {
 //
 // The function map includes all custom types from the configuration,
 // making them available as placeholders in templates.
-func NewGenerator(cfg *config.Config) *Generator {
+func NewGenerator(cfg *config.Config, maxCount int) (*Generator, error) {
 	// Set the seed for randomization if provided
 	if cfg.Seed != 0 {
 		gofakeit.Seed(cfg.Seed)
@@ -45,70 +50,87 @@ func NewGenerator(cfg *config.Config) *Generator {
 	g := &Generator{
 		config:      cfg,
 		totalWeight: totalWeight,
+		stopChan:    make(chan struct{}),
+		doneChan:    make(chan struct{}),
+		maxCount:    maxCount,
 	}
 
 	// Initialize the function map for template rendering
 	g.funcMap = g.createFuncMap(cfg.CustomTypes)
 
-	return g
+	// Initialize outputs and workers
+	if err := g.initializeOutputs(); err != nil {
+		return nil, fmt.Errorf("error initializing outputs: %w", err)
+	}
+
+	return g, nil
 }
 
-// GenerateLogs generates the specified number of log lines and writes them to the output file.
-// It returns an error if file operations fail or if log generation encounters problems.
-//
-// The function:
-// 1. Creates or overwrites the output file
-// 2. For each log line, selects a random template based on weights
-// 3. Populates the template with random values
-// 4. Writes the log line to the output file
-// 5. Reports progress periodically
-func (g *Generator) GenerateLogs(outputFile string, count int) error {
-	if _, err := os.Stat(outputFile); err == nil {
-		err = os.Remove(outputFile)
-		if err != nil {
-			return fmt.Errorf("error deleting output file: %w", err)
-		}
-		fmt.Printf("Deleted existing output file: %s\n", outputFile)
-	}
-
-	f, err := os.Create(outputFile)
-	if err != nil {
-		return fmt.Errorf("error creating output file: %w", err)
-	}
-	defer f.Close()
-
-	writer := bufio.NewWriter(f)
-	defer writer.Flush()
-
-	fmt.Printf("Generating %d log lines to %s...\n", count, outputFile)
-
-	for i := 0; i < count; i++ {
-		// Select a random template based on weight
-		templateIdx := g.selectWeightedTemplate()
-		selectedTemplate := g.config.Templates[templateIdx].Template
-
-		// Generate a log line using the template with custom functions
-		logLine, err := gofakeit.Template(selectedTemplate, &gofakeit.TemplateOptions{
-			Funcs: g.funcMap,
-		})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error generating log line: %v\n", err)
-			continue
+// initializeOutputs sets up all configured outputs and their workers
+func (g *Generator) initializeOutputs() error {
+	for _, outputCfg := range g.config.Outputs {
+		// Calculate max count per worker
+		maxCountPerWorker := 0
+		if g.maxCount > 0 {
+			maxCountPerWorker = g.maxCount / outputCfg.Workers
+			if g.maxCount%outputCfg.Workers != 0 {
+				maxCountPerWorker++ // Round up to ensure we generate at least maxCount
+			}
 		}
 
-		// Write the log line to the output file
-		_, err = writer.WriteString(logLine + "\n")
-		if err != nil {
-			return fmt.Errorf("error writing to output file: %w", err)
-		}
+		// Create workers for this output
+		for i := 0; i < outputCfg.Workers; i++ {
+			// Create the output with worker ID
+			out, err := output.NewOutput(outputCfg, i)
+			if err != nil {
+				return fmt.Errorf("error creating output %s: %w", outputCfg.Type, err)
+			}
 
-		// Show progress
-		if i > 0 && i%100 == 0 {
-			fmt.Printf("%d log lines generated...\n", i)
+			worker := output.NewWorker(out, g, 100, maxCountPerWorker, g.stopChan) // Batch size of 100
+			g.workers = append(g.workers, worker)
 		}
 	}
 
-	fmt.Printf("Successfully generated %d log lines to %s\n", count, outputFile)
+	return nil
+}
+
+// Done returns a channel that is closed when the generator has completed
+// generating the requested number of logs
+func (g *Generator) Done() chan struct{} {
+	return g.doneChan
+}
+
+// Start begins generating and sending logs to all configured outputs
+func (g *Generator) Start() {
+	for _, worker := range g.workers {
+		g.wg.Add(1)
+		go func(w *output.Worker) {
+			defer g.wg.Done()
+			w.Start()
+		}(worker)
+	}
+
+	// If we have a max count, start a goroutine to monitor completion
+	if g.maxCount > 0 {
+		go func() {
+			g.wg.Wait()
+			close(g.doneChan)
+		}()
+	}
+}
+
+// Stop gracefully stops all workers and closes outputs
+func (g *Generator) Stop() error {
+	close(g.stopChan)
+	g.wg.Wait()
+
+	// Close all outputs
+	for _, worker := range g.workers {
+		if err := worker.Output.Close(); err != nil {
+			return fmt.Errorf("error closing output: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -145,7 +167,6 @@ func (g *Generator) createFuncMap(customTypes map[string][]string) template.Func
 	for typeName, values := range customTypes {
 		// Create a function to properly capture the values for each custom type
 		funcMap[typeName] = g.createRandomValueFunc(values)
-		fmt.Printf("Added custom function: %s with %d possible values\n", typeName, len(values))
 	}
 
 	// Add built-in helper functions
@@ -177,6 +198,11 @@ func (g *Generator) createRandomValueFunc(values []string) func() string {
 // This is useful for generating log lines programmatically without writing to a file,
 // such as when streaming logs directly to another system.
 func (g *Generator) GenerateLogLine() (string, error) {
+	// First check if we have any templates
+	if len(g.config.Templates) == 0 {
+		return "", fmt.Errorf("no templates available")
+	}
+
 	templateIdx := g.selectWeightedTemplate()
 	selectedTemplate := g.config.Templates[templateIdx].Template
 

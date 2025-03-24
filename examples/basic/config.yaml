@@ -1,5 +1,5 @@
 # Example configuration for genlog
-# All configuration configuration can be viewed in the README.md
+# All configuration options can be viewed in the README.md
 seed: 12345
 
 templates:
@@ -39,3 +39,21 @@ custom_types:
     - "Database connection timeout"
     - "Cache invalidation completed"
     - "Request processed in 235ms"
+
+# Configure outputs for the generated logs
+outputs:
+  # Standard log output
+  - type: file
+    workers: 2
+    config:
+      filename: "standard.log"
+  # JSON formatted log output
+  - type: file
+    workers: 1
+    config:
+      filename: "json.log"
+  # Optional UDP output (commented out by default)
+  # - type: udp
+  #   workers: 1
+  #   config:
+  #     address: "localhost:514"

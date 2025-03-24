@@ -4,10 +4,43 @@
 package config
 
 import (
+	"fmt"
 	"os"
 
 	"gopkg.in/yaml.v3"
 )
+
+// OutputType represents the type of output destination for logs
+type OutputType string
+
+const (
+	OutputTypeFile OutputType = "file"
+	OutputTypeUDP  OutputType = "udp"
+)
+
+// OutputConfig represents a single output configuration
+type OutputConfig struct {
+	// Type specifies the kind of output (file, udp, etc.)
+	Type OutputType `yaml:"type"`
+
+	// Workers specifies the number of concurrent workers for this output
+	Workers int `yaml:"workers"`
+
+	// Config contains the type-specific configuration
+	Config map[string]interface{} `yaml:"config"`
+}
+
+// FileOutputConfig represents configuration specific to file outputs
+type FileOutputConfig struct {
+	// Filename is the path where logs will be written
+	Filename string `yaml:"filename"`
+}
+
+// UDPOutputConfig represents configuration specific to UDP outputs
+type UDPOutputConfig struct {
+	// Address is the UDP destination address (e.g., "localhost:514")
+	Address string `yaml:"address"`
+}
 
 // Config represents the main configuration structure for the log generator.
 // It defines the templates to use, any custom type definitions, and optional
@@ -53,6 +86,9 @@ type Config struct {
 	// Templates is a slice of log templates with their respective weights.
 	// At least one template is required for log generation.
 	Templates []LogTemplate `yaml:"templates"`
+
+	// Outputs defines the destinations where logs will be sent
+	Outputs []OutputConfig `yaml:"outputs"`
 
 	// CustomTypes is a map of custom type names to their possible values.
 	// These can be referenced in templates and will be selected randomly.
@@ -110,4 +146,29 @@ func ReadConfig(configFile string) (*Config, error) {
 	}
 
 	return &config, nil
+}
+
+// Validate checks if the configuration is valid
+func (c *Config) Validate() error {
+	if len(c.Templates) == 0 {
+		return fmt.Errorf("no templates configured")
+	}
+	if len(c.Outputs) == 0 {
+		return fmt.Errorf("no outputs configured")
+	}
+	for _, output := range c.Outputs {
+		switch output.Type {
+		case OutputTypeFile:
+			if _, ok := output.Config["filename"].(string); !ok {
+				return fmt.Errorf("filename is required for file output")
+			}
+		case OutputTypeUDP:
+			if _, ok := output.Config["address"].(string); !ok {
+				return fmt.Errorf("address is required for UDP output")
+			}
+		default:
+			return fmt.Errorf("unsupported output type: %s", output.Type)
+		}
+	}
+	return nil
 }
