@@ -69,7 +69,7 @@ func main() {
 	}
 
 	// Create a generator from the config
-	gen, err := genlog.NewFromConfig(cfg, 20) // Generate 20 logs
+	gen, err := genlog.NewFromConfig(cfg, 20) // Generate 20 log samples
 	if err != nil {
 		log.Fatalf("Failed to create generator: %v", err)
 	}

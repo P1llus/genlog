@@ -1,13 +1,23 @@
 package generator
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/P1llus/genlog/pkg/config"
+	"github.com/P1llus/genlog/pkg/output"
 )
 
 func TestNewGenerator(t *testing.T) {
+	// Create a temporary directory for test files
+	tmpDir, err := os.MkdirTemp("", "generator-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
 	cfg := &config.Config{
 		Templates: []config.LogTemplate{
 			{
@@ -20,7 +30,7 @@ func TestNewGenerator(t *testing.T) {
 				Type:    config.OutputTypeFile,
 				Workers: 1,
 				Config: map[string]interface{}{
-					"filename": "test.log",
+					"filename": filepath.Join(tmpDir, "test.log"),
 				},
 			},
 		},
@@ -39,6 +49,13 @@ func TestNewGenerator(t *testing.T) {
 }
 
 func TestGenerateLogLine(t *testing.T) {
+	// Create a temporary directory for test files
+	tmpDir, err := os.MkdirTemp("", "generator-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
 	cfg := &config.Config{
 		Templates: []config.LogTemplate{
 			{
@@ -54,7 +71,7 @@ func TestGenerateLogLine(t *testing.T) {
 				Type:    config.OutputTypeFile,
 				Workers: 1,
 				Config: map[string]interface{}{
-					"filename": "test.log",
+					"filename": filepath.Join(tmpDir, "test.log"),
 				},
 			},
 		},
@@ -76,13 +93,19 @@ func TestGenerateLogLine(t *testing.T) {
 	}
 
 	// Verify the log line format
-	// Note: This is a basic check, you might want to add more specific format validation
 	if len(logLine) < 30 { // Minimum expected length for timestamp + message
 		t.Errorf("Log line too short: %s", logLine)
 	}
 }
 
 func TestSelectWeightedTemplate(t *testing.T) {
+	// Create a temporary directory for test files
+	tmpDir, err := os.MkdirTemp("", "generator-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
 	cfg := &config.Config{
 		Templates: []config.LogTemplate{
 			{
@@ -99,7 +122,7 @@ func TestSelectWeightedTemplate(t *testing.T) {
 				Type:    config.OutputTypeFile,
 				Workers: 1,
 				Config: map[string]interface{}{
-					"filename": "test.log",
+					"filename": filepath.Join(tmpDir, "test.log"),
 				},
 			},
 		},
@@ -127,6 +150,13 @@ func TestSelectWeightedTemplate(t *testing.T) {
 }
 
 func TestStartAndStop(t *testing.T) {
+	// Create a temporary directory for test files
+	tmpDir, err := os.MkdirTemp("", "generator-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
 	cfg := &config.Config{
 		Templates: []config.LogTemplate{
 			{
@@ -139,7 +169,7 @@ func TestStartAndStop(t *testing.T) {
 				Type:    config.OutputTypeFile,
 				Workers: 1,
 				Config: map[string]interface{}{
-					"filename": "test.log",
+					"filename": filepath.Join(tmpDir, "test.log"),
 				},
 			},
 		},
@@ -168,16 +198,29 @@ func TestStartAndStop(t *testing.T) {
 }
 
 func TestCreateFuncMap(t *testing.T) {
+	// Create a temporary directory for test files
+	tmpDir, err := os.MkdirTemp("", "generator-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
 	cfg := &config.Config{
 		CustomTypes: map[string][]string{
 			"test_type": {"value1", "value2"},
+		},
+		Templates: []config.LogTemplate{
+			{
+				Template: "{{test_type}}",
+				Weight:   1,
+			},
 		},
 		Outputs: []config.OutputConfig{
 			{
 				Type:    config.OutputTypeFile,
 				Workers: 1,
 				Config: map[string]interface{}{
-					"filename": "test.log",
+					"filename": filepath.Join(tmpDir, "test.log"),
 				},
 			},
 		},
@@ -207,4 +250,113 @@ func TestCreateFuncMap(t *testing.T) {
 	} else {
 		t.Error("FormattedDate function not found in funcMap")
 	}
+}
+
+// BenchmarkGeneratorFileOutput measures the performance of generating and writing logs using a Worker
+func BenchmarkGeneratorFileOutput(b *testing.B) {
+	// Create a temporary directory for test files
+	tmpDir, err := os.MkdirTemp("", "benchmark-*")
+	if err != nil {
+		b.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create output config
+	cfg := config.OutputConfig{
+		Type:    config.OutputTypeFile,
+		Workers: 1,
+		Config: map[string]interface{}{
+			"filename": filepath.Join(tmpDir, "benchmark.log"),
+		},
+	}
+
+	// Create output
+	out, err := output.NewOutput(cfg, 0)
+	if err != nil {
+		b.Fatalf("NewOutput failed: %v", err)
+	}
+	defer out.Close()
+
+	// Create generator config
+	genConfig := &config.Config{
+		Seed: 12345,
+		Templates: []config.LogTemplate{
+			{
+				Template: "{{FormattedDate \"2006-01-02T15:04:05.000Z07:00\"}} [{{level}}] {{username}} - {{message}}",
+				Weight:   5,
+			},
+			{
+				Template: "{{FormattedDate \"Jan 2 15:04:05\"}} {{level}} [{{service}}] {{IPv4Address}} {{username}}: {{message}}",
+				Weight:   3,
+			},
+			{
+				Template: "{\"timestamp\":\"{{FormattedDate \"2006-01-02T15:04:05.000Z07:00\"}}\",\"level\":\"{{level}}\",\"service\":\"{{service}}\",\"message\":\"{{message}}\",\"user\":\"{{username}}\",\"ip\":\"{{IPv4Address}}\"}",
+				Weight:   2,
+			},
+		},
+		Outputs: []config.OutputConfig{
+			{
+				Type:    config.OutputTypeFile,
+				Workers: 1,
+				Config: map[string]interface{}{
+					"filename": filepath.Join(tmpDir, "benchmark.log"),
+				},
+			},
+		},
+		CustomTypes: map[string][]string{
+			"level": {
+				"INFO",
+				"WARNING",
+				"ERROR",
+				"DEBUG",
+				"TRACE",
+			},
+			"service": {
+				"API",
+				"AUTH",
+				"DATABASE",
+				"CACHE",
+				"FRONTEND",
+			},
+			"username": {
+				"admin",
+				"system",
+				"app",
+				"service_account",
+				"anonymous",
+			},
+			"message": {
+				"User authenticated successfully",
+				"Failed login attempt - invalid credentials",
+				"Permission denied to resource",
+				"Resource accessed successfully",
+				"API rate limit exceeded",
+				"Database connection timeout",
+				"Cache invalidation completed",
+				"Request processed in 235ms",
+			},
+		},
+	}
+
+	// Create generator
+	gen, err := NewGenerator(genConfig, 0)
+	if err != nil {
+		b.Fatalf("Failed to create generator: %v", err)
+	}
+
+	// Create worker
+	stopChan := make(chan struct{})
+	worker := output.NewWorker(out, gen, 100, 0, stopChan)
+
+	// Reset the benchmark timer before the actual benchmark
+	b.ResetTimer()
+
+	// Start worker
+	go worker.Start()
+
+	// Wait for completion
+	<-time.After(time.Duration(b.N) * time.Microsecond)
+	close(stopChan)
+
+	time.Sleep(100 * time.Millisecond)
 }

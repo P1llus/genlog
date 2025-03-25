@@ -35,6 +35,10 @@ type Generator struct {
 // The function map includes all custom types from the configuration,
 // making them available as placeholders in templates.
 func NewGenerator(cfg *config.Config, maxCount int) (*Generator, error) {
+	err := cfg.Validate()
+	if err != nil {
+		return nil, fmt.Errorf("error validating config: %w", err)
+	}
 	// Set the seed for randomization if provided
 	if cfg.Seed != 0 {
 		gofakeit.Seed(cfg.Seed)
@@ -86,7 +90,7 @@ func (g *Generator) initializeOutputs() error {
 				return fmt.Errorf("error creating output %s: %w", outputCfg.Type, err)
 			}
 
-			worker := output.NewWorker(out, g, 100, maxCountPerWorker, g.stopChan) // Batch size of 100
+			worker := output.NewWorker(out, g, outputCfg.BatchSize, maxCountPerWorker, g.stopChan)
 			g.workers = append(g.workers, worker)
 		}
 	}

@@ -26,8 +26,11 @@ type OutputConfig struct {
 	// Workers specifies the number of concurrent workers for this output
 	Workers int `yaml:"workers"`
 
+	// BatchSize specifies the number of logs to write in a single batch
+	BatchSize int `yaml:"batch_size"`
+
 	// Config contains the type-specific configuration
-	Config map[string]interface{} `yaml:"config"`
+	Config map[string]any `yaml:"config"`
 }
 
 // FileOutputConfig represents configuration specific to file outputs
@@ -157,6 +160,12 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("no outputs configured")
 	}
 	for _, output := range c.Outputs {
+		if output.BatchSize == 0 {
+			output.BatchSize = 100
+		}
+		if output.Workers == 0 {
+			output.Workers = 1
+		}
 		switch output.Type {
 		case OutputTypeFile:
 			if _, ok := output.Config["filename"].(string); !ok {

@@ -95,8 +95,10 @@ func (o *fileOutput) Close() error {
 
 // udpOutput implements Output for UDP destinations
 type udpOutput struct {
-	conn *net.UDPConn
-	addr *net.UDPAddr
+	conn     *net.UDPConn
+	addr     *net.UDPAddr
+	writeBuf int
+	mu       sync.Mutex // Protects conn during concurrent writes from same worker
 }
 
 func newUDPOutput(cfg config.OutputConfig) (*udpOutput, error) {
@@ -110,27 +112,55 @@ func newUDPOutput(cfg config.OutputConfig) (*udpOutput, error) {
 		return nil, fmt.Errorf("error resolving UDP address: %w", err)
 	}
 
+	writeBuf := 1024 * 1024 // Default 1MB buffer
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
 		return nil, fmt.Errorf("error creating UDP connection: %w", err)
 	}
 
+	// Set write buffer size for better performance
+	if err := conn.SetWriteBuffer(writeBuf); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("error setting write buffer: %w", err)
+	}
+
 	return &udpOutput{
-		conn: conn,
-		addr: addr,
+		conn:     conn,
+		addr:     addr,
+		writeBuf: writeBuf,
 	}, nil
 }
 
 func (o *udpOutput) Write(messages []string) error {
+	if len(messages) == 0 {
+		return nil
+	}
+
+	// Lock to prevent concurrent writes to the same connection
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
 	for _, msg := range messages {
-		if _, err := o.conn.Write([]byte(msg + "\n")); err != nil {
-			return fmt.Errorf("error writing to UDP: %w", err)
+		// Add newline to message
+		msgBytes := []byte(msg + "\n")
+
+		// Check if message exceeds UDP packet size
+		if len(msgBytes) > 1472 { // Max safe UDP payload size
+			// Truncate large messages
+			msgBytes = msgBytes[:1472]
+		}
+
+		if _, err := o.conn.Write(msgBytes); err != nil {
+			return fmt.Errorf("error writing UDP message: %w", err)
 		}
 	}
+
 	return nil
 }
 
 func (o *udpOutput) Close() error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
 	return o.conn.Close()
 }
 

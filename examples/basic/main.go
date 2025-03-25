@@ -25,8 +25,8 @@ func main() {
 	<-gen.Done()
 
 	// Generate and print individual log lines
-	// This demonstrates generating logs on-demand without writing to a file
-	// Useful for streaming logs or integrating with other systems
+	// This demonstrates generating logs on-demand without writing to an output
+	// Useful for adhoc log generation or when you need to generate logs for other purposes
 	fmt.Println("\nGenerated individual log lines:")
 	for i := 0; i < 5; i++ {
 		logLine, err := gen.GenerateLogLine()
@@ -36,6 +36,5 @@ func main() {
 		fmt.Printf("%d: %s\n", i+1, logLine)
 	}
 
-	fmt.Println("\nTip: Check the output files specified in your config.yaml to see all generated log lines.")
 	fmt.Println("Each run will produce different random values unless a seed is specified.")
 }

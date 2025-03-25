@@ -119,7 +119,6 @@ func TestUDPOutput(t *testing.T) {
 		t.Fatalf("Write failed: %v", err)
 	}
 
-	// Read messages from UDP server
 	buf := make([]byte, 1024)
 	for i, msg := range messages {
 		conn.SetReadDeadline(time.Now().Add(1 * time.Second))

@@ -11,8 +11,35 @@ import (
 // This example demonstrates how to create a generator from a config file
 // and generate logs to multiple outputs.
 func Example_generateFromFile() {
-	// In real code, you would use a real config file path
-	configFile := "config.yaml"
+	// Create a temporary directory for test files
+	tmpDir, err := os.MkdirTemp("", "config-example-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating temp directory: %v\n", err)
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create a temporary config file
+	configContent := `
+templates:
+  - template: "{{FormattedDate \"2006-01-02T15:04:05.000Z07:00\"}} [INFO] {{message}}"
+    weight: 1
+custom_types:
+  message:
+    - "Test message 1"
+    - "Test message 2"
+outputs:
+  - type: file
+    workers: 1
+    config:
+      filename: "` + filepath.Join(tmpDir, "output.log") + `"
+seed: 12345
+`
+	configFile := filepath.Join(tmpDir, "config.yaml")
+	if err := os.WriteFile(configFile, []byte(configContent), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing config file: %v\n", err)
+		return
+	}
 
 	// Create generator from config file with a max count of 100 logs
 	gen, err := genlog.NewFromFile(configFile, 100)
@@ -40,6 +67,14 @@ func Example_generateFromFile() {
 
 // This example shows how to generate a single log line programmatically.
 func Example_generateSingleLine() {
+	// Create a temporary directory for test files
+	tmpDir, err := os.MkdirTemp("", "single-line-example-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating temp directory: %v\n", err)
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+
 	// Create a simple configuration programmatically
 	cfg := &genlog.Config{
 		Templates: []genlog.LogTemplate{
@@ -57,7 +92,7 @@ func Example_generateSingleLine() {
 				Type:    genlog.OutputTypeFile,
 				Workers: 1,
 				Config: map[string]interface{}{
-					"filename": "output.log",
+					"filename": filepath.Join(tmpDir, "output.log"),
 				},
 			},
 		},
