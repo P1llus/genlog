@@ -5,23 +5,6 @@
 
 A high-performance fake log generator for testing and benchmarking purposes.
 
-## Features
-
-- 🚀 **High Performance**: Generate millions of logs per second using parallel architecture
-- 📝 **Template-Based**: Easy-to-use template syntax with weighted random selection
-- 🎲 **Pre-Generated Values**: Value pools eliminate random generation overhead in hot path
-- 🔧 **Extensible Outputs**: File and UDP outputs with easy plugin architecture
-- 📊 **Real-Time Stats**: Live statistics during generation
-- ⚙️ **Configurable Limits**: Stop generation by count, duration, or size
-- 📦 **Library + CLI**: Use as a Go library or standalone command-line tool
-
-## Performance
-
-- **1 million logs in ~1-2 seconds** on modern hardware
-- **40GB+ of logs in minutes** (vs hours with traditional approaches)
-- **Near-linear scaling** with CPU cores
-- **Minimal memory footprint** with bounded channel buffers
-
 ## Installation
 
 ### As a Command-Line Tool
@@ -329,16 +312,6 @@ cd examples/customfunc
 go run main.go
 ```
 Demonstrates registering custom Go functions for use in templates.
-
-## Benchmarks
-
-Tested on: Intel i9-12900K (16 cores), 32GB RAM, NVMe SSD
-
-| Logs | File Size | Time | Rate |
-|------|-----------|------|------|
-| 1M | 95MB | ~1.5s | 666K logs/sec |
-| 10M | 950MB | ~15s | 666K logs/sec |
-| 100M | 9.5GB | ~2.5min | 666K logs/sec |
 
 ## Contributing
 
