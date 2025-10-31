@@ -1,66 +1,108 @@
-/*
-Package genlog provides a simple API for generating fake log data based on
-customizable templates and patterns. It's designed for testing, development,
-and demonstration purposes when realistic log data is needed.
-
-# Basic Usage
-
-The simplest way to use genlog is through a configuration file:
-
-	import "github.com/P1llus/genlog"
-
-	// Create a log generator from a config file
-	gen, err := genlog.NewFromFile("config.yaml", 4) // 4 workers
-	if err != nil {
-		// handle error
-	}
-
-	// Generate 1000 log lines to output.log
-	err = gen.GenerateLogs("output.log", 1000)
-	if err != nil {
-		// handle error
-	}
-
-	// Wait for completion
-	<-gen.Done()
-
-# Programmatic Configuration
-
-You can also create configurations programmatically:
-
-	cfg := &genlog.Config{
-		Templates: []genlog.LogTemplate{
-			{
-				Template: "{{FormattedDate \"2006-01-02T15:04:05.000Z07:00\"}} [INFO] User {{username}} logged in from {{IPv4Address}}",
-				Weight:   1,
-			},
-		},
-		CustomTypes: map[string][]string{
-			"username": {"john", "alice", "bob"},
-		},
-	}
-
-	gen := genlog.NewFromConfig(cfg, 4) // 4 workers
-	logLine, err := gen.GenerateLogLine()
-
-# Template Syntax
-
-Templates use the golang template syntax with surrounded by double braces.
-You can use functions available from gofakeit, custom types defined in configurations, and built-in custom functions:
-More examples can be found on the GitHub repository.
-
-- Basic placeholders: {{FirstName}}, {{URL}}, {{IPv4Address}}
-- Custom types: {{username}} (defined in your config)
-- Built-in custom functions: {{FormattedDate "2006-01-02 15:04:05"}}
-
-# Command Line Tool
-
-Genlog can also be used as a command line tool, and can be installed either with go-get or by downloading a pre-built binary from the releases page:
-
-	genlog -config=myconfig.yaml -output=logs.txt -count=1000 -workers=4
-
-The tool supports both count-based and infinite generation modes, with proper handling of graceful shutdown.
-See the GitHub repository for more information and examples:
-https://github.com/P1llus/genlog
-*/
+// Package genlog provides high-performance fake log generation for testing and benchmarking.
+//
+// # Overview
+//
+// genlog generates realistic log data using customizable templates and pre-generated random values.
+// It achieves millions of logs per second throughput through:
+//   - Pre-compiled templates
+//   - Value pools for fast lookups
+//   - Producer-consumer pipeline architecture
+//   - Parallel generation and batched writes
+//
+// # Quick Start
+//
+// The simplest way to use genlog is with a configuration file:
+//
+//	gen, err := genlog.NewFromFile("config.yaml")
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//
+//	gen.Start()
+//	gen.Wait()
+//	gen.Stop()
+//
+// # Programmatic Configuration
+//
+// You can also create configurations programmatically:
+//
+//	cfg := &genlog.Config{
+//		Templates: []genlog.Template{
+//			{
+//				Template: "{{timestamp}} [{{level}}] {{message}}",
+//				Weight:   10,
+//			},
+//		},
+//		CustomTypes: map[string][]string{
+//			"level":   {"INFO", "WARN", "ERROR"},
+//			"message": {"User logged in", "Request processed"},
+//		},
+//		Outputs: []genlog.OutputConfig{
+//			{
+//				Type: "file",
+//				Config: map[string]interface{}{
+//					"path": "output.log",
+//				},
+//			},
+//		},
+//		Limits: genlog.Limits{
+//			MaxCount: 1000000, // Generate 1M logs
+//		},
+//	}
+//
+//	gen, err := genlog.New(cfg)
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//
+//	gen.Start()
+//	gen.Wait()
+//	gen.Stop()
+//
+// # Template Syntax
+//
+// Templates use {{placeholder}} syntax for dynamic values:
+//
+//   - Built-in placeholders: {{ipv4}}, {{username}}, {{email}}, {{timestamp}}
+//   - Custom types: Define in CustomTypes map and reference by name
+//   - Functions: {{FormattedDate "2006-01-02"}}, {{Number 1 100}}
+//
+// # Performance Tuning
+//
+// Control generation performance through the Performance configuration:
+//
+//	cfg.Performance = genlog.Performance{
+//		ProducerWorkers: 8,      // CPU-bound generation workers
+//		ConsumerWorkers: 2,      // I/O-bound write workers
+//		ChannelBuffer:   100000, // Pipeline buffer size
+//		WriteBatchSize:  1000,   // Logs per write batch
+//		ValuePoolSize:   10000,  // Pre-generated values per type
+//	}
+//
+// # Generation Limits
+//
+// Control when generation stops:
+//
+//	cfg.Limits = genlog.Limits{
+//		MaxCount:    1000000,    // Stop after 1M logs
+//		MaxDuration: time.Hour,  // Or after 1 hour
+//		MaxSize:     1 << 30,    // Or after 1GB
+//	}
+//
+// # Statistics
+//
+// Monitor generation in real-time:
+//
+//	stats := gen.Stats().Snapshot()
+//	fmt.Printf("Generated: %d logs at %.0f logs/sec\n",
+//		stats.Generated, stats.LogsPerSecond)
+//
+// # Output Types
+//
+// Built-in output types:
+//
+//   - file: Write to local files
+//   - udp: Send via UDP socket
+//
+// Additional output types can be added by implementing the output.Output interface.
 package genlog
