@@ -1,89 +1,125 @@
-// Package genlog provides a simple API for generating fake log data
-// based on customizable templates and patterns.
+// Package genlog provides high-performance fake log generation.
 //
-// It can be used either as a library in your Go code or as a CLI tool.
+// It can be used as both a library and a CLI tool for generating
+// realistic log data for testing and benchmarking purposes.
+//
+// Basic Usage:
+//
+//	cfg := &genlog.Config{
+//		Templates: []genlog.Template{
+//			{
+//				Template: "{{timestamp}} [{{level}}] {{message}}",
+//				Weight:   10,
+//			},
+//		},
+//		CustomTypes: map[string][]string{
+//			"level":   {"INFO", "WARN", "ERROR"},
+//			"message": {"User logged in", "Request processed"},
+//		},
+//		Outputs: []genlog.OutputConfig{
+//			{
+//				Type: "file",
+//				Config: map[string]interface{}{
+//					"path": "output.log",
+//				},
+//			},
+//		},
+//	}
+//
+//	gen, err := genlog.New(cfg)
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//
+//	gen.Start()
+//	gen.Wait()
 package genlog
 
 import (
-	"fmt"
-
 	"github.com/P1llus/genlog/pkg/config"
 	"github.com/P1llus/genlog/pkg/generator"
 )
 
-// Generator represents the main log generator interface
-type Generator interface {
-	// Start begins generating and sending logs
-	Start()
-	// Stop gracefully stops the generator
-	Stop() error
-	// Done returns a channel that is closed when the generator has completed
-	Done() chan struct{}
-	// GenerateLogLine generates a single log line using a randomly selected template
-	GenerateLogLine() (string, error)
-}
-
-// GeneratorStruct implements the Generator interface
-type GeneratorStruct struct {
+// Generator is the main interface for log generation.
+type Generator struct {
 	gen *generator.Generator
 }
 
-// NewFromConfig creates a new generator from a config struct
-func NewFromConfig(cfg *config.Config, maxCount int) (Generator, error) {
-	gen, err := generator.NewGenerator(cfg, maxCount)
+// Config represents the main configuration.
+type Config = config.Config
+
+// Template represents a log template with weight.
+type Template = config.Template
+
+// OutputConfig represents an output configuration.
+type OutputConfig = config.OutputConfig
+
+// Performance represents performance tuning parameters.
+type Performance = config.Performance
+
+// Limits represents generation limits.
+type Limits = config.Limits
+
+// TemplateFunc is the signature for custom template functions.
+// Functions receive variable arguments as strings and return a string.
+//
+// Example custom function:
+//
+//	func(args ...string) string {
+//		if len(args) == 0 {
+//			return ""
+//		}
+//		return strings.ToUpper(args[0])
+//	}
+//
+// Usage in template: {{Uppercase "hello"}} -> HELLO
+type TemplateFunc = config.TemplateFunc
+
+// Stats represents generation statistics.
+type Stats = generator.Stats
+
+// Snapshot represents a point-in-time statistics snapshot.
+type Snapshot = generator.Snapshot
+
+// New creates a new log generator from configuration.
+func New(cfg *Config) (*Generator, error) {
+	gen, err := generator.New(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("error creating generator: %w", err)
+		return nil, err
 	}
-	return &GeneratorStruct{gen: gen}, nil
+	return &Generator{gen: gen}, nil
 }
 
-// NewFromFile creates a new generator from a config file
-func NewFromFile(configPath string, maxCount int) (Generator, error) {
-	cfg, err := config.ReadConfig(configPath)
+// NewFromFile creates a new log generator from a YAML configuration file.
+func NewFromFile(path string) (*Generator, error) {
+	cfg, err := config.LoadFromFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("error loading config: %w", err)
+		return nil, err
 	}
-	return NewFromConfig(cfg, maxCount)
+	return New(cfg)
 }
 
-// Start begins generating and sending logs
-func (g *GeneratorStruct) Start() {
-	g.gen.Start()
+// Start begins log generation.
+func (g *Generator) Start() error {
+	return g.gen.Start()
 }
 
-// Stop gracefully stops the generator
-func (g *GeneratorStruct) Stop() error {
+// Stop gracefully stops log generation.
+func (g *Generator) Stop() error {
 	return g.gen.Stop()
 }
 
-// Done returns a channel that is closed when the generator has completed
-func (g *GeneratorStruct) Done() chan struct{} {
+// Wait blocks until generation completes (due to configured limits).
+func (g *Generator) Wait() {
+	g.gen.Wait()
+}
+
+// Stats returns the current generation statistics.
+func (g *Generator) Stats() *Stats {
+	return g.gen.Stats()
+}
+
+// Done returns a channel that's closed when generation completes.
+func (g *Generator) Done() <-chan struct{} {
 	return g.gen.Done()
 }
-
-// GenerateLogLine generates a single log line using a randomly selected template.
-// This is useful for generating log lines programmatically without writing to a file,
-// such as when streaming logs directly to another system.
-func (g *GeneratorStruct) GenerateLogLine() (string, error) {
-	return g.gen.GenerateLogLine()
-}
-
-// Config provides access to the configuration structures.
-// This allows users to create their own configurations programmatically.
-type Config = config.Config
-
-// LogTemplate represents a single log template with its selection weight.
-type LogTemplate = config.LogTemplate
-
-// OutputConfig represents a single output configuration
-type OutputConfig = config.OutputConfig
-
-// OutputType represents the type of output destination for logs
-type OutputType = config.OutputType
-
-const (
-	// OutputTypeFile represents a file output destination
-	OutputTypeFile = config.OutputTypeFile
-	// OutputTypeUDP represents a UDP output destination
-	OutputTypeUDP = config.OutputTypeUDP
-)

@@ -1,221 +1,285 @@
-// Package generator provides log generation functionality for the genlog tool.
-// It contains the core logic for creating fake log entries based on templates
-// and random data generation.
+// Package generator orchestrates the log generation pipeline with producer and consumer workers.
+//
+// This package implements a high-performance producer-consumer architecture where:
+//   - Producer workers generate log strings using pre-compiled templates and value pools
+//   - Logs are sent through a buffered channel for decoupling
+//   - Consumer workers batch and write logs to configured outputs
+//
+// The architecture enables millions of logs per second throughput with minimal memory overhead.
 package generator
 
 import (
 	"fmt"
 	"sync"
-	"text/template"
 	"time"
 
 	"github.com/P1llus/genlog/pkg/config"
 	"github.com/P1llus/genlog/pkg/output"
-	"github.com/brianvoe/gofakeit/v7"
+	"github.com/P1llus/genlog/pkg/template"
 )
 
-// Generator is responsible for generating fake log entries
-// based on the provided configuration. It handles template selection,
-// random value generation, and output management.
+// Generator orchestrates the entire log generation pipeline from initialization to shutdown.
+//
+// It manages:
+//   - Template compilation and value pool initialization
+//   - Producer workers that generate log strings
+//   - Consumer workers that batch and write logs
+//   - Statistics tracking
+//   - Graceful shutdown coordination
 type Generator struct {
-	config      *config.Config
-	funcMap     template.FuncMap
-	totalWeight int
-	workers     []*output.Worker
-	stopChan    chan struct{}
-	wg          sync.WaitGroup
-	maxCount    int
-	doneChan    chan struct{} // Channel to signal completion
+	config     *config.Config
+	compiler   *template.Compiler
+	producers  []*Producer
+	consumers  []*output.Consumer
+	outputs    []output.Output
+	pipeline   chan string
+	stopChan   chan struct{}
+	doneChan   chan struct{}
+	stats      *Stats
+	producerWg sync.WaitGroup
+	consumerWg sync.WaitGroup
+	limiter    *Limiter
+	stopOnce   sync.Once
 }
 
-// NewGenerator creates a new log generator with the given configuration.
-// It initializes the function map for template rendering and calculates
-// the total template weight for weighted random selection.
+// New creates a new generator from the provided configuration.
 //
-// The function map includes all custom types from the configuration,
-// making them available as placeholders in templates.
-func NewGenerator(cfg *config.Config, maxCount int) (*Generator, error) {
-	err := cfg.Validate()
+// This function:
+//   - Validates configuration and applies defaults
+//   - Compiles all templates into efficient execution plans
+//   - Creates value pools for each producer worker
+//   - Initializes the pipeline channel
+//   - Sets up all configured outputs
+//   - Creates producer and consumer workers
+//
+// The generator is ready to start but does not begin generating logs until Start() is called.
+func New(cfg *config.Config) (*Generator, error) {
+	// Validate config and apply defaults
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid configuration: %w", err)
+	}
+
+	// Create template compiler
+	templates := make([]struct {
+		Template string
+		Weight   int
+	}, len(cfg.Templates))
+
+	for i, t := range cfg.Templates {
+		templates[i].Template = t.Template
+		templates[i].Weight = t.Weight
+	}
+
+	// Convert custom functions to the format expected by compiler
+	var customFuncs map[string]func(args ...string) string
+	if cfg.CustomFunctions != nil {
+		customFuncs = make(map[string]func(args ...string) string, len(cfg.CustomFunctions))
+		for name, fn := range cfg.CustomFunctions {
+			customFuncs[name] = fn
+		}
+	}
+
+	compiler, err := template.NewCompiler(templates, customFuncs)
 	if err != nil {
-		return nil, fmt.Errorf("error validating config: %w", err)
-	}
-	// Set the seed for randomization if provided
-	if cfg.Seed != 0 {
-		gofakeit.Seed(cfg.Seed)
+		return nil, fmt.Errorf("failed to compile templates: %w", err)
 	}
 
-	// Calculate total weight for template selection
-	totalWeight := 0
-	for _, tpl := range cfg.Templates {
-		totalWeight += tpl.Weight
+	// Create pipeline channel
+	pipeline := make(chan string, cfg.Performance.ChannelBuffer)
+
+	// Create stats
+	stats := NewStats()
+
+	// Create outputs
+	outputs := make([]output.Output, len(cfg.Outputs))
+	for i, outputCfg := range cfg.Outputs {
+		out, err := output.NewOutput(outputCfg.Type, outputCfg.Config)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create output %d: %w", i, err)
+		}
+		outputs[i] = out
 	}
 
-	// Create the generator instance
+	// Create generator
 	g := &Generator{
-		config:      cfg,
-		totalWeight: totalWeight,
-		stopChan:    make(chan struct{}),
-		doneChan:    make(chan struct{}),
-		maxCount:    maxCount,
+		config:   cfg,
+		compiler: compiler,
+		outputs:  outputs,
+		pipeline: pipeline,
+		stopChan: make(chan struct{}),
+		doneChan: make(chan struct{}),
+		stats:    stats,
+		limiter:  NewLimiter(cfg.Limits),
 	}
 
-	// Initialize the function map for template rendering
-	g.funcMap = g.createFuncMap(cfg.CustomTypes)
+	// Create producers
+	g.producers = make([]*Producer, cfg.Performance.ProducerWorkers)
 
-	// Initialize outputs and workers
-	if err := g.initializeOutputs(); err != nil {
-		return nil, fmt.Errorf("error initializing outputs: %w", err)
+	// Calculate per-producer limit if max_count is set
+	var maxCountPerProducer int64 = 0
+	if cfg.Limits.MaxCount > 0 {
+		// Divide total count among producers, rounding up to ensure we hit the limit
+		maxCountPerProducer = (cfg.Limits.MaxCount + int64(cfg.Performance.ProducerWorkers) - 1) / int64(cfg.Performance.ProducerWorkers)
+	}
+
+	for i := 0; i < cfg.Performance.ProducerWorkers; i++ {
+		// Each producer gets its own value pool with unique seed
+		seed := cfg.Seed + int64(i)
+		valuePool := template.NewValuePool(seed, cfg.Performance.ValuePoolSize, cfg.CustomTypes)
+
+		g.producers[i] = NewProducer(
+			i,
+			compiler,
+			valuePool,
+			pipeline,
+			g.stopChan,
+			stats,
+			maxCountPerProducer,
+		)
+	}
+
+	// Create consumers (one per output)
+	g.consumers = make([]*output.Consumer, 0)
+	for i, out := range outputs {
+		consumer := output.NewConsumer(
+			i,
+			pipeline,
+			out,
+			cfg.Performance.WriteBatchSize,
+			stats,
+		)
+		g.consumers = append(g.consumers, consumer)
 	}
 
 	return g, nil
 }
 
-// initializeOutputs sets up all configured outputs and their workers
-func (g *Generator) initializeOutputs() error {
-	for _, outputCfg := range g.config.Outputs {
-		// Calculate max count per worker
-		maxCountPerWorker := 0
-		if g.maxCount > 0 {
-			maxCountPerWorker = g.maxCount / outputCfg.Workers
-			if g.maxCount%outputCfg.Workers != 0 {
-				maxCountPerWorker++ // Round up to ensure we generate at least maxCount
-			}
-		}
-
-		// Create workers for this output
-		for i := 0; i < outputCfg.Workers; i++ {
-			// Create the output with worker ID
-			out, err := output.NewOutput(outputCfg, i)
-			if err != nil {
-				return fmt.Errorf("error creating output %s: %w", outputCfg.Type, err)
-			}
-
-			worker := output.NewWorker(out, g, outputCfg.BatchSize, maxCountPerWorker, g.stopChan)
-			g.workers = append(g.workers, worker)
-		}
+// Start begins log generation by launching all producer and consumer workers.
+//
+// Producers immediately begin generating logs and sending them to the pipeline channel.
+// Consumers read from the channel, batch logs, and write them to outputs.
+//
+// If limits are configured, a monitor goroutine is started to detect when limits are reached.
+func (g *Generator) Start() error {
+	// Start all producers
+	for _, producer := range g.producers {
+		g.producerWg.Add(1)
+		go func(p *Producer) {
+			defer g.producerWg.Done()
+			p.Run()
+		}(producer)
 	}
 
-	return nil
-}
-
-// Done returns a channel that is closed when the generator has completed
-// generating the requested number of logs
-func (g *Generator) Done() chan struct{} {
-	return g.doneChan
-}
-
-// Start begins generating and sending logs to all configured outputs
-func (g *Generator) Start() {
-	for _, worker := range g.workers {
-		g.wg.Add(1)
-		go func(w *output.Worker) {
-			defer g.wg.Done()
-			w.Start()
-		}(worker)
+	// Start all consumers
+	for _, consumer := range g.consumers {
+		g.consumerWg.Add(1)
+		go func(c *output.Consumer) {
+			defer g.consumerWg.Done()
+			if err := c.Run(); err != nil {
+				fmt.Printf("Consumer error: %v\n", err)
+			}
+		}(consumer)
 	}
 
-	// If we have a max count, start a goroutine to monitor completion
-	if g.maxCount > 0 {
+	// Start limit monitor for duration/size limits
+	// (count limits are handled by producers themselves)
+	if g.limiter.HasDurationOrSizeLimits() {
+		go g.monitorLimits()
+	} else if g.config.Limits.MaxCount > 0 {
+		// If only count limit, monitor producers completion
 		go func() {
-			g.wg.Wait()
+			g.producerWg.Wait()
 			close(g.doneChan)
 		}()
 	}
-}
-
-// Stop gracefully stops all workers and closes outputs
-func (g *Generator) Stop() error {
-	close(g.stopChan)
-	g.wg.Wait()
-
-	// Close all outputs
-	for _, worker := range g.workers {
-		if err := worker.Output.Close(); err != nil {
-			return fmt.Errorf("error closing output: %w", err)
-		}
-	}
 
 	return nil
 }
 
-// selectWeightedTemplate selects a random template index based on the weights.
-// Templates with higher weights have a proportionally higher chance of being selected.
-func (g *Generator) selectWeightedTemplate() int {
-	if g.totalWeight <= 0 || len(g.config.Templates) == 0 {
-		return 0
-	}
+// monitorLimits checks if any limits have been reached and stops generation.
+func (g *Generator) monitorLimits() {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
 
-	r := gofakeit.IntRange(0, g.totalWeight-1)
-	sum := 0
-	for i, tpl := range g.config.Templates {
-		sum += tpl.Weight
-		if r < sum {
-			return i
+	for {
+		select {
+		case <-g.stopChan:
+			return
+		case <-ticker.C:
+			if g.limiter.ShouldStop(g.stats) {
+				close(g.doneChan)
+				g.Stop()
+				return
+			}
 		}
 	}
-	return 0
 }
 
-// createFuncMap creates a map of functions that can be used in templates.
-// The map includes:
-// 1. All custom types from the configuration, each as a function returning a random value
-// 2. Built-in helper functions like FormattedDate
+// Stop gracefully stops all workers and ensures data integrity.
 //
-// Note: The addLookupFunc functionality of gofakeit is not available when rendering
-// inside go templates. This is why we have to create a map of the function names along
-// with the function used to generate the random value.
-func (g *Generator) createFuncMap(customTypes map[string][]string) template.FuncMap {
-	funcMap := make(map[string]any)
+// The shutdown sequence:
+//  1. Signal all workers to stop via stopChan
+//  2. Wait for producers to finish generating
+//  3. Close the pipeline channel (signals "no more data")
+//  4. Wait for consumers to drain all remaining logs
+//  5. Close all output destinations
+//
+// This ensures all generated logs are written before shutdown completes.
+// Stop can be called multiple times safely; subsequent calls are no-ops.
+func (g *Generator) Stop() error {
+	var err error
 
-	// Add each custom type as a function that returns a random value from its slice
-	for typeName, values := range customTypes {
-		// Create a function to properly capture the values for each custom type
-		funcMap[typeName] = g.createRandomValueFunc(values)
-	}
+	// Ensure we only stop once
+	g.stopOnce.Do(func() {
+		// Step 1: Signal all workers to stop
+		close(g.stopChan)
 
-	// Add built-in helper functions
-	funcMap["FormattedDate"] = func(format string) string {
-		// Generate a random date within a reasonable range
-		minDate := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
-		maxDate := time.Now() // Current time
+		// Step 2: Wait for all producers to finish
+		g.producerWg.Wait()
 
-		randomDate := gofakeit.DateRange(minDate, maxDate)
-		return randomDate.Format(format)
-	}
+		// Step 3: Close the pipeline channel (signals consumers no more data is coming)
+		close(g.pipeline)
 
-	return funcMap
-}
+		// Step 4: Wait for all consumers to drain the channel and finish
+		g.consumerWg.Wait()
 
-// createRandomValueFunc creates a function that returns a random value from the given slice.
-// This is used to translate configured custom types to a funcMap for the template functions.
-func (g *Generator) createRandomValueFunc(values []string) func() string {
-	return func() string {
-		if len(values) == 0 {
-			return ""
+		// Step 5: Close all outputs
+		for _, out := range g.outputs {
+			if closeErr := out.Close(); closeErr != nil {
+				err = fmt.Errorf("failed to close output %s: %w", out.Name(), closeErr)
+			}
 		}
-		index := gofakeit.IntRange(0, len(values)-1)
-		return values[index]
-	}
+	})
+
+	return err
 }
 
-// GenerateLogLine generates a single log line using a randomly selected template.
-// This is useful for generating log lines programmatically without writing to a file,
-// such as when streaming logs directly to another system.
-func (g *Generator) GenerateLogLine() (string, error) {
-	// First check if we have any templates
-	if len(g.config.Templates) == 0 {
-		return "", fmt.Errorf("no templates available")
-	}
+// Wait blocks until generation completes.
+//
+// Generation completes when:
+//   - A configured limit is reached (count, duration, or size)
+//   - Stop() is called
+//
+// This is useful when you want to start generation and wait for it to finish.
+func (g *Generator) Wait() {
+	<-g.doneChan
+}
 
-	templateIdx := g.selectWeightedTemplate()
-	selectedTemplate := g.config.Templates[templateIdx].Template
+// Stats returns the current generation statistics.
+//
+// Statistics include:
+//   - Total logs generated
+//   - Total logs written
+//   - Bytes generated
+//   - Generation duration
+//   - Logs per second rate
+func (g *Generator) Stats() *Stats {
+	return g.stats
+}
 
-	logLine, err := gofakeit.Template(selectedTemplate, &gofakeit.TemplateOptions{
-		Funcs: g.funcMap,
-	})
-	if err != nil {
-		return "", fmt.Errorf("error generating log line: %w", err)
-	}
-
-	return logLine, nil
+// Done returns a channel that's closed when generation completes.
+//
+// This allows integration with select statements for coordinating with other goroutines.
+func (g *Generator) Done() <-chan struct{} {
+	return g.doneChan
 }
