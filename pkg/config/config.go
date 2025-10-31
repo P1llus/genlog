@@ -13,6 +13,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// TemplateFunc is the signature for custom template functions.
+// Functions receive variable arguments as strings and return a string.
+// Example: func(args ...string) string { return strings.Join(args, "-") }
+type TemplateFunc func(args ...string) string
+
 // Config represents the main configuration for the log generator.
 type Config struct {
 	// Templates defines the log templates with their weights
@@ -20,6 +25,12 @@ type Config struct {
 
 	// CustomTypes defines custom placeholder types that can be referenced in templates
 	CustomTypes map[string][]string `yaml:"custom_types,omitempty"`
+
+	// CustomFunctions allows registering Go functions that can be called from templates.
+	// Function signature: func(args ...string) string
+	// Example: {{MyFunc "arg1" "arg2"}} will call CustomFunctions["MyFunc"]("arg1", "arg2")
+	// Note: This field cannot be set via YAML, only programmatically
+	CustomFunctions map[string]TemplateFunc `yaml:"-"`
 
 	// Performance tuning parameters
 	Performance Performance `yaml:"performance,omitempty"`

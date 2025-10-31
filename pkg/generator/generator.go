@@ -70,7 +70,16 @@ func New(cfg *config.Config) (*Generator, error) {
 		templates[i].Weight = t.Weight
 	}
 
-	compiler, err := template.NewCompiler(templates)
+	// Convert custom functions to the format expected by compiler
+	var customFuncs map[string]func(args ...string) string
+	if cfg.CustomFunctions != nil {
+		customFuncs = make(map[string]func(args ...string) string, len(cfg.CustomFunctions))
+		for name, fn := range cfg.CustomFunctions {
+			customFuncs[name] = fn
+		}
+	}
+
+	compiler, err := template.NewCompiler(templates, customFuncs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile templates: %w", err)
 	}

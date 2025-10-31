@@ -60,6 +60,21 @@ type Performance = config.Performance
 // Limits represents generation limits.
 type Limits = config.Limits
 
+// TemplateFunc is the signature for custom template functions.
+// Functions receive variable arguments as strings and return a string.
+//
+// Example custom function:
+//
+//	func(args ...string) string {
+//		if len(args) == 0 {
+//			return ""
+//		}
+//		return strings.ToUpper(args[0])
+//	}
+//
+// Usage in template: {{Uppercase "hello"}} -> HELLO
+type TemplateFunc = config.TemplateFunc
+
 // Stats represents generation statistics.
 type Stats = generator.Stats
 

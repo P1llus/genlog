@@ -100,6 +100,53 @@ func main() {
 }
 ```
 
+## Custom Functions
+
+Library users can register custom Go functions to use in templates:
+
+```go
+cfg := &genlog.Config{
+    Templates: []genlog.Template{
+        {
+            Template: "{{Uppercase \"alert\"}} - {{ipv4}} - {{level}}",
+            Weight:   1,
+        },
+    },
+    CustomFunctions: map[string]genlog.TemplateFunc{
+        // Convert string to uppercase
+        "Uppercase": func(args ...string) string {
+            if len(args) == 0 {
+                return ""
+            }
+            return strings.ToUpper(args[0])
+        },
+        // Hash a string (simple example)
+        "Hash": func(args ...string) string {
+            if len(args) == 0 {
+                return ""
+            }
+            return fmt.Sprintf("%x", []byte(args[0]))[:8]
+        },
+        // Repeat a string N times
+        "Repeat": func(args ...string) string {
+            if len(args) < 2 {
+                return ""
+            }
+            count, _ := strconv.Atoi(args[1])
+            return strings.Repeat(args[0], count)
+        },
+    },
+    // ... rest of config
+}
+```
+
+Custom functions:
+- Accept variable string arguments: `func(args ...string) string`
+- Can override built-in functions (FormattedDate, Number)
+- Are only available when using genlog as a library (not from YAML)
+
+See `examples/customfunc/` for a complete working example.
+
 ## Configuration
 
 ### YAML Configuration Example
@@ -264,6 +311,24 @@ outputs:
     config:
       address: "localhost:514"
 ```
+
+## Examples
+
+The `examples/` directory contains working examples demonstrating various features:
+
+### Simple Example
+```bash
+cd examples/simple
+go run main.go
+```
+Demonstrates basic programmatic configuration and library usage.
+
+### Custom Functions Example
+```bash
+cd examples/customfunc
+go run main.go
+```
+Demonstrates registering custom Go functions for use in templates.
 
 ## Benchmarks
 

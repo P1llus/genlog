@@ -59,6 +59,45 @@
 //	gen.Wait()
 //	gen.Stop()
 //
+// # Custom Functions
+//
+// Register custom Go functions that can be called from templates:
+//
+//	cfg := &genlog.Config{
+//		Templates: []genlog.Template{
+//			{
+//				Template: "{{Uppercase {{level}}}} - {{Reverse \"hello\"}}",
+//				Weight:   1,
+//			},
+//		},
+//		CustomFunctions: map[string]genlog.TemplateFunc{
+//			"Uppercase": func(args ...string) string {
+//				if len(args) == 0 {
+//					return ""
+//				}
+//				return strings.ToUpper(args[0])
+//			},
+//			"Reverse": func(args ...string) string {
+//				if len(args) == 0 {
+//					return ""
+//				}
+//				runes := []rune(args[0])
+//				for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+//					runes[i], runes[j] = runes[j], runes[i]
+//				}
+//				return string(runes)
+//			},
+//		},
+//		// ... rest of config
+//	}
+//
+// Custom functions:
+//   - Accept variable arguments as strings
+//   - Can override built-in functions (e.g., FormattedDate, Number)
+//   - Work alongside regular placeholders in templates
+//   - Are evaluated with their literal string arguments
+//   - Only available when using genlog as a library (not from YAML config)
+//
 // # Template Syntax
 //
 // Templates use {{placeholder}} syntax for dynamic values:

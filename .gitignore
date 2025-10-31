@@ -26,5 +26,7 @@
 # Common files
 *.log
 config.yaml
-*.json
-/dist/
+dist/
+build/
+tmp/
+temp/

@@ -23,6 +23,9 @@ type CompiledTemplate struct {
 
 	// Original template string (for debugging)
 	Original string
+
+	// CustomFunctions contains user-registered functions available to this template
+	CustomFunctions map[string]func(args ...string) string
 }
 
 // Part represents a single part of a compiled template.
@@ -185,7 +188,16 @@ func (ct *CompiledTemplate) Execute(vp *ValuePool, builder *strings.Builder) {
 		if part.IsStatic {
 			builder.WriteString(part.Value)
 		} else {
-			// Handle special function types
+			// Check for custom functions first (user-defined take priority)
+			if part.Type != "" && ct.CustomFunctions != nil {
+				if customFunc, exists := ct.CustomFunctions[part.Type]; exists {
+					result := customFunc(part.Args...)
+					builder.WriteString(result)
+					continue
+				}
+			}
+
+			// Handle built-in special function types
 			switch part.Type {
 			case "FormattedDate":
 				// FormattedDate "2006-01-02 15:04:05"
@@ -210,7 +222,7 @@ func (ct *CompiledTemplate) Execute(vp *ValuePool, builder *strings.Builder) {
 				}
 
 			default:
-				// Simple placeholder lookup
+				// Simple placeholder lookup from value pool
 				builder.WriteString(vp.Get(part.Value))
 			}
 		}
@@ -219,17 +231,19 @@ func (ct *CompiledTemplate) Execute(vp *ValuePool, builder *strings.Builder) {
 
 // Compiler manages a collection of compiled templates.
 type Compiler struct {
-	templates   []*CompiledTemplate
-	totalWeight int
+	templates       []*CompiledTemplate
+	totalWeight     int
+	customFunctions map[string]func(args ...string) string
 }
 
 // NewCompiler creates a new template compiler from a list of template strings.
 func NewCompiler(templates []struct {
 	Template string
 	Weight   int
-}) (*Compiler, error) {
+}, customFunctions map[string]func(args ...string) string) (*Compiler, error) {
 	c := &Compiler{
-		templates: make([]*CompiledTemplate, 0, len(templates)),
+		templates:       make([]*CompiledTemplate, 0, len(templates)),
+		customFunctions: customFunctions,
 	}
 
 	for i, tmpl := range templates {
@@ -237,6 +251,8 @@ func NewCompiler(templates []struct {
 		if err != nil {
 			return nil, fmt.Errorf("failed to compile template %d: %w", i, err)
 		}
+		// Attach custom functions to each compiled template
+		compiled.CustomFunctions = customFunctions
 		c.templates = append(c.templates, compiled)
 		c.totalWeight += tmpl.Weight
 	}
